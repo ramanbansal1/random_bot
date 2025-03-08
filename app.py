@@ -3,41 +3,46 @@ from pinecone import Pinecone
 from langchain_community.embeddings import SentenceTransformerEmbeddings
 from google import genai
 import os
-import whisper
-from audiorecorder import audiorecorder
-import tempfile
 
 
 PINECONE_API_KEY = 'pcsk_5NBr39_SEsKT2c238kck4UrJw5HE8GmV4qPHuTPesgwm6GTGtaFNgL3Q4dGehsmryNg1ws'
-PINECONE_INDEX = "pubmedbert-base-embedding1"
 GEMINI_API_KEY = 'AIzaSyCRP0bFr9e3ebbK-J01Fsnf43JiFf3PYuc'
 
 
 whisper_model = whisper.load_model("base")
 pc = Pinecone(api_key=PINECONE_API_KEY)
-index = pc.Index(PINECONE_INDEX)
+
+
+cp_index = pc.Index('causes-prevention')
+dt_index = pc.Index('diagnos-treatment')
+is_index = pc.Index('intro-symptoms')
+
+
 client = genai.Client(api_key=GEMINI_API_KEY)
 embeddings = SentenceTransformerEmbeddings(model_name="NeuML/pubmedbert-base-embeddings")
 
 
 
-def retrieve_context(query):
-    """Retrieve relevant documents from Pinecone."""
+
+def generate_response(query: str, chat_history: str) -> str:
     query_embedding = embeddings.embed_query(query)
-    results = index.query(vector=query_embedding, top_k=5, include_metadata=True)
+
+    cps = cp_index.query(vector=query_embedding, top_k=5, include_metadata=True)
+    dts = dt_index.query(vector=query_embedding, top_k=5, include_metadata=True)
+    iss = is_index.query(vector=query_embedding, top_k=5, include_metadata=True)
     
-    return [match["metadata"]["text"] for match in results["matches"]]
+    cps_texts = "\n".join([match["metadata"]["text"] for match in cps["matches"]])
+    dts_texts = "\n".join([match["metadata"]["text"] for match in dts["matches"]])
+    iss_texts = "\n".join([match["metadata"]["text"] for match in iss["matches"]])
 
-def generate_response(query, chat_history):
-    """Generate a response using Gemini with retrieved context."""
-    retrieved_texts = retrieve_context(query)
-    context = "\n".join(retrieved_texts)
-
-    response = client.models.generate_content(
+    summarizer = client.models.generate_content(
         model="gemini-2.0-flash", 
-        contents=f"Use the following context to answer:\n{context}\n\nChat history: {chat_history}\n\nHere is the query:\n{query}"
+        contents=f"Act as a doctor, summarize the information for providing useful insights to another doctor using causes, prevention, diagnos,treatments and symptoms.\n\nHere is the basic infor about diseases that might be happening and its symptoms\n{dt_index}  \n\n  Here is the causes and prevention:\n {cps_texts}\n\n Here is information about diagnos and treatment: \n {dts_texts}"
+    ) 
+    response = client.models.generate_content(
+        model='gemini-2.0-flash',
+        contents=f"Act as a doctor, provide guidlines and he need of treatment if any to the patient according to the given data about the patient in maximum 200 words: \n\n {summarizer.text}. Here is the past chat history: {chat_history}\n\n Here is the query: {query}"
     )
-    
     return response.text
 
 
@@ -51,37 +56,10 @@ st.markdown(
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
-if "speech_text" not in st.session_state:
-    st.session_state.speech_text = ""
-
-
-audio = audiorecorder("Click to record", "Stop recording")
-
 
 
 user_input = st.chat_input("Ask me anything...", key="user_input")
 
-
-if audio is not None:
-    
-    # Export the AudioSegment to a WAV file
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmpfile:
-        audio.export(tmpfile.name, format="wav")
-        audio_path = tmpfile.name
-
-    # Transcribe the audio using Whisper
-    result = whisper_model.transcribe(audio_path)
-    st.session_state.speech_text = result["text"]
-
-    
-    # Cleanup temporary files
-    os.remove(audio_path)
-
-
-
-if st.session_state.speech_text:
-    user_input = st.session_state.speech_text
-    st.session_state.speech_text = ""  # Clear the session state after use
 
 if user_input:
     # Add user message to chat history
