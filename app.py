@@ -9,7 +9,6 @@ PINECONE_API_KEY = 'pcsk_5NBr39_SEsKT2c238kck4UrJw5HE8GmV4qPHuTPesgwm6GTGtaFNgL3
 GEMINI_API_KEY = 'AIzaSyCRP0bFr9e3ebbK-J01Fsnf43JiFf3PYuc'
 
 
-whisper_model = whisper.load_model("base")
 pc = Pinecone(api_key=PINECONE_API_KEY)
 
 
