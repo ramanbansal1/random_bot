@@ -2,6 +2,7 @@ import streamlit as st
 from pinecone import Pinecone
 from langchain_community.embeddings import SentenceTransformerEmbeddings
 from google import genai
+import speech_recognition as sr
 import os
 
 # Configure API Keys
@@ -43,22 +44,57 @@ def generate_response(query, chat_history):
     
     return response.text
 
+def toggle_listening():
+    st.session_state.is_listening = not st.session_state.is_listening
+
+
 
 # Streamlit UI
-st.set_page_config(page_title="Medical Bot", layout="wide")
+st.set_page_config(page_title="Medical Bot")
+
 st.markdown(
     "<h1 style='text-align: center;'>🔍 RAG Chatbot with Pinecone & Gemini</h1>",
     unsafe_allow_html=True
 )
+recognizer = sr.Recognizer()
+
+
 
 
 if "messages" not in st.session_state:
-        st.session_state.messages = []
+    st.session_state.messages = []
+if "speech_text" not in st.session_state:
+    st.session_state.speech_text = ""
 
-# Store chat history
+
+
 
 # User input
+btn = st.button("🎤 Start Listening")
+listening_placeholder = st.empty()
 user_input = st.chat_input("Ask me anything...", key="user_input")
+
+
+
+if btn:
+    listening_placeholder.write("Listening... Speak now...")
+    with sr.Microphone() as source:
+        recognizer.adjust_for_ambient_noise(source)
+        audio = recognizer.listen(source)
+    listening_placeholder.empty()
+    try:
+        st.session_state.speech_text = recognizer.recognize_google(audio)
+    except sr.UnknownValueError:
+        st.error('Could not understand the audio.', icon="❌")
+    except sr.RequestError:
+        st.error('Speech recognition service unavailable.', icon="❌")
+
+
+if st.session_state.speech_text:
+    user_input = st.session_state.speech_text
+    st.session_state.speech_text = ""  # Clear the session state after use
+    
+
 if user_input:
     # Add user message to chat history
     st.session_state.messages.append({"role": "user", "content": user_input})
